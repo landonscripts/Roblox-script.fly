@@ -1,0 +1,179 @@
+-- Wait for the player and character to load
+local player = game.Players.LocalPlayer
+local character = player.Character or player.CharacterAdded:Wait()
+local humanoid = character:WaitForChild("Humanoid")
+local rootPart = character:WaitForChild("HumanoidRootPart")
+
+-- Create the main GUI Frame (box)
+local gui = Instance.new("ScreenGui")
+gui.Name = "FlyGUI"
+gui.Parent = player.PlayerGui
+
+local frame = Instance.new("Frame")
+frame.Size = UDim2.new(0, 180, 0, 80)  -- Smaller size of the box
+frame.Position = UDim2.new(0, 10, 0, 10)  -- Position on the screen
+frame.BackgroundColor3 = Color3.fromRGB(50, 50, 50)  -- Grey background
+frame.Parent = gui
+
+-- Fly Button
+local flyButton = Instance.new("TextButton")
+flyButton.Text = "Fly"
+flyButton.Size = UDim2.new(0, 60, 0, 30)
+flyButton.Position = UDim2.new(0, 10, 0, 10)
+flyButton.BackgroundColor3 = Color3.fromRGB(169, 169, 169)  -- Grey buttons
+flyButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+flyButton.Parent = frame
+
+-- Speed Buttons
+local plusButton = Instance.new("TextButton")
+plusButton.Text = "+"
+plusButton.Size = UDim2.new(0, 30, 0, 30)
+plusButton.Position = UDim2.new(0, 80, 0, 10)
+plusButton.BackgroundColor3 = Color3.fromRGB(169, 169, 169)  -- Grey buttons
+plusButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+plusButton.Parent = frame
+
+local minusButton = Instance.new("TextButton")
+minusButton.Text = "-"
+minusButton.Size = UDim2.new(0, 30, 0, 30)
+minusButton.Position = UDim2.new(0, 120, 0, 10)
+minusButton.BackgroundColor3 = Color3.fromRGB(169, 169, 169)  -- Grey buttons
+minusButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+minusButton.Parent = frame
+
+-- Speed Display Label
+local speedLabel = Instance.new("TextLabel")
+speedLabel.Text = "SPS: 0"  -- Initial speed is 0
+speedLabel.Size = UDim2.new(0, 160, 0, 30)
+speedLabel.Position = UDim2.new(0, 10, 0, 50)
+speedLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+speedLabel.BackgroundTransparency = 1
+speedLabel.TextScaled = true
+speedLabel.Parent = frame
+
+-- Variables for Flying and Speed
+local flying = false
+local speed = 50  -- Initial speed
+local lastPosition = rootPart.Position
+local lastUpdateTime = tick()
+
+local bodyVelocity = Instance.new("BodyVelocity")
+local bodyGyro = Instance.new("BodyGyro")
+bodyVelocity.MaxForce = Vector3.new(100000, 100000, 100000)
+bodyGyro.MaxTorque = Vector3.new(100000, 100000, 100000)
+
+-- Enable Flying
+local function startFlying()
+    if flying then return end
+    flying = true
+
+    humanoid.PlatformStand = true -- Prevents default movement
+    bodyVelocity.Parent = rootPart
+    bodyGyro.Parent = rootPart
+    bodyVelocity.Velocity = Vector3.new(0, 0, 0)
+    bodyGyro.CFrame = rootPart.CFrame
+
+    -- Change camera to custom for movement control
+    workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
+end
+
+-- Stop Flying
+local function stopFlying()
+    if not flying then return end
+    flying = false
+
+    humanoid.PlatformStand = false
+    bodyVelocity.Parent = nil
+    bodyGyro.Parent = nil
+
+    -- Reset camera
+    workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
+end
+
+-- Adjust Speed (called when speed buttons are clicked)
+local function increaseSpeed()
+    speed = speed + 10
+    speedLabel.Text = "SPS: " .. speed
+end
+
+local function decreaseSpeed()
+    speed = math.max(10, speed - 10)
+    speedLabel.Text = "SPS: " .. speed
+end
+
+-- Movement Handling using GetMoveVector
+local controlModule = require(player:WaitForChild("PlayerScripts").PlayerModule:WaitForChild("ControlModule"))
+
+-- Update loop for flying and movement
+game:GetService("RunService").Heartbeat:Connect(function()
+    if flying then
+        -- Get the move vector from the ControlModule (this is the joystick input)
+        local moveVector = controlModule:GetMoveVector()
+        
+        -- Get the camera's orientation for flying
+        local camera = workspace.CurrentCamera
+        local cameraCF = camera.CFrame
+        local cameraLookVector = cameraCF.LookVector
+        local cameraRightVector = cameraCF.RightVector
+
+        -- Invert the Z axis for correct forward/backward movement
+        local invertedMoveVector = Vector3.new(moveVector.X, 0, -moveVector.Z)
+        
+        -- Apply the joystick movement based on the camera orientation
+        local moveVelocity = cameraLookVector * invertedMoveVector.Z + cameraRightVector * invertedMoveVector.X
+        bodyVelocity.Velocity = moveVelocity * speed
+        bodyGyro.CFrame = CFrame.new(rootPart.Position, rootPart.Position + cameraLookVector)
+
+        -- Calculate studs per second (SPS)
+        local currentTime = tick()
+        local deltaTime = currentTime - lastUpdateTime
+        local deltaPosition = (rootPart.Position - lastPosition).Magnitude
+        local sps = deltaPosition / deltaTime  -- Calculate the speed in studs per second
+
+        -- Update the speed label
+        speedLabel.Text = "SPS: " .. math.floor(sps)
+        
+        -- Update the last position and time for the next frame
+        lastPosition = rootPart.Position
+        lastUpdateTime = currentTime
+    end
+end)
+
+-- Button Connections for Flying and Speed Controls
+flyButton.Activated:Connect(function()
+    if flying then
+        stopFlying()
+        flyButton.Text = "Fly"
+    else
+        startFlying()
+        flyButton.Text = "Stop"
+    end
+end)
+
+plusButton.Activated:Connect(increaseSpeed)
+minusButton.Activated:Connect(decreaseSpeed)
+
+-- Make the frame draggable (for mobile touch input)
+local dragging = false
+local dragInput, dragStart, startPos
+
+-- Touch input handling for mobile drag
+frame.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragStart = input.Position
+        startPos = frame.Position
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
+            end
+        end)
+    end
+end)
+
+frame.InputChanged:Connect(function(input)
+    if dragging and input.UserInputType == Enum.UserInputType.Touch then
+        local delta = input.Position - dragStart
+        frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    end
+end)
