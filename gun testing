@@ -1,0 +1,43 @@
+local Debris = game:GetService("Debris")
+ 
+local LaserGun = script.Parent
+local Tip = LaserGun.Tip
+ 
+local Player = game.Players.LocalPlayer
+local Character = Player.Character
+ 
+local GunDamage = 30
+ 
+ 
+LaserGun.Equipped:Connect(function(Mouse)
+    Mouse.Button1Down:Connect(function()
+        local Laser = Ray.new(Tip.CFrame.p, (Mouse.Hit.p - Tip.CFrame.p).unit * 300)
+        local HitPart, HitPosition = game.Workspace:FindPartOnRay(Laser, Character, false, true)
+        
+        local LaserBeam = Instance.new("Part", game.Workspace)
+        LaserBeam.BrickColor = BrickColor.new("Bright green")
+        LaserBeam.FormFactor = "Custom"
+        LaserBeam.Material = "Neon"
+        LaserBeam.Transparency = 0.25
+        LaserBeam.Anchored = true
+        LaserBeam.CanCollide = false
+        
+        local LaserDistance = (Tip.CFrame.p - HitPosition).Magnitude
+        LaserBeam.Size = Vector3.new(0.3, 0.3, LaserDistance)
+        LaserBeam.CFrame = CFrame.new(Tip.CFrame.p, HitPosition) * CFrame.new(0, 0, -LaserDistance/2)
+        
+        Debris:AddItem(LaserBeam, 0.1)
+        
+        if HitPart then
+            local HitHumanoid = HitPart.Parent:FindFirstChild("Humanoid")
+            
+            if not HitHumanoid then
+                HitHumanoid = HitPart.Parent.Parent:FindFirstChild("Humanoid")
+            end
+            
+            if HitHumanoid then
+                HitHumanoid:TakeDamage(35)
+            end
+        end
+    end)
+end)
